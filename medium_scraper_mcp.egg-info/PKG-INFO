@@ -1,0 +1,162 @@
+Metadata-Version: 2.4
+Name: medium-scraper-mcp
+Version: 0.1.0
+Summary: MCP server for searching and converting Medium articles to markdown
+Author: Hong Kong Kiwi
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: httpx>=0.25.0
+Requires-Dist: beautifulsoup4>=4.12.0
+Requires-Dist: markdownify>=0.13.0
+Requires-Dist: mcp>=1.0.0
+Requires-Dist: lxml>=4.9.0
+Requires-Dist: aiohttp>=3.8.0
+
+# Medium Scraper MCP Server
+
+A Model Context Protocol (MCP) server for searching Medium articles and converting them to markdown format.
+
+## Features
+
+- **Search Medium articles** by keyword or tag
+- **Convert Medium articles to markdown** with preserved formatting
+- **Get article metadata** including title, author, and reading time
+- **Async support** for high-performance scraping
+- **Clean markdown output** with proper formatting
+
+## Installation
+
+```bash
+pip install -e .
+```
+
+## Usage
+
+### MCP Server Tools
+
+The server provides the following tools:
+
+#### 1. `search_medium_articles`
+
+Search for Medium articles by query or tag.
+
+**Parameters:**
+- `query` (required): Search query string
+- `tag` (optional): Medium tag to filter by (e.g., "python", "technology")
+- `limit` (optional): Maximum number of results (default: 10)
+
+**Example:**
+```json
+{
+  "name": "search_medium_articles",
+  "arguments": {
+    "query": "machine learning",
+    "tag": "python",
+    "limit": 5
+  }
+}
+```
+
+#### 2. `convert_medium_to_markdown`
+
+Convert a Medium article URL to markdown format.
+
+**Parameters:**
+- `url` (required): Medium article URL
+- `include_images` (optional): Include image references (default: true)
+- `include_code` (optional): Preserve code blocks (default: true)
+
+**Example:**
+```json
+{
+  "name": "convert_medium_to_markdown",
+  "arguments": {
+    "url": "https://medium.com/@author/article-title-1234567890",
+    "include_images": true,
+    "include_code": true
+  }
+}
+```
+
+#### 3. `get_medium_article_info`
+
+Get metadata about a Medium article without full content.
+
+**Parameters:**
+- `url` (required): Medium article URL
+
+**Example:**
+```json
+{
+  "name": "get_medium_article_info",
+  "arguments": {
+    "url": "https://medium.com/@author/article-title-1234567890"
+  }
+}
+```
+
+## Running the Server
+
+### CLI Mode
+
+```bash
+python -m medium_scraper_mcp
+```
+
+### Development Mode
+
+```bash
+python -m medium_scraper_mcp --verbose
+```
+
+## MCP Configuration
+
+Add to your MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "medium-scraper": {
+      "command": "python",
+      "args": ["-m", "medium_scraper_mcp"]
+    }
+  }
+}
+```
+
+## Example Usage
+
+### Search for Python articles
+```json
+{
+  "name": "search_medium_articles",
+  "arguments": {
+    "query": "asyncio",
+    "tag": "python",
+    "limit": 3
+  }
+}
+```
+
+### Convert an article to markdown
+```json
+{
+  "name": "convert_medium_to_markdown",
+  "arguments": {
+    "url": "https://medium.com/@author/understanding-asyncio-in-python-1234567890"
+  }
+}
+```
+
+## Dependencies
+
+- `httpx`: Async HTTP client
+- `beautifulsoup4`: HTML parsing
+- `markdownify`: HTML to Markdown conversion
+- `mcp`: Model Context Protocol framework
+- `lxml`: XML/HTML parser
+- `aiohttp`: Async HTTP client/server
+
+## License
+
+MIT License
