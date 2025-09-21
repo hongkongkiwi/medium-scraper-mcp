@@ -28,7 +28,25 @@ A comprehensive Model Context Protocol (MCP) server for searching Medium article
 
 ## Installation
 
+### Option 1: Install from npm (Recommended)
+
 ```bash
+# Install globally
+npm install -g medium-scraper-mcp
+
+# Or run directly with npx
+npx medium-scraper-mcp
+
+# For MCP configuration, use npx in your MCP client settings
+```
+
+### Option 2: Install from source
+
+```bash
+# Clone repository
+git clone https://github.com/hongkongkiwi/medium-scraper-mcp.git
+cd medium-scraper-mcp
+
 # Install dependencies
 npm install
 
@@ -145,6 +163,19 @@ npm run dev -- --verbose
 
 Add to your MCP client configuration:
 
+**For npm installation:**
+```json
+{
+  "mcpServers": {
+    "medium-scraper": {
+      "command": "npx",
+      "args": ["medium-scraper-mcp"]
+    }
+  }
+}
+```
+
+**For global installation:**
 ```json
 {
   "mcpServers": {
@@ -291,6 +322,43 @@ The server includes intelligent paywall bypass functionality:
 
 MIT License
 
+## CI/CD Pipeline
+
+This project uses GitHub Actions for automated testing, security scanning, and npm publishing:
+
+### Automated Testing
+- **Multi-node testing**: Runs on Node.js 18, 20, and 22
+- **Type checking**: TypeScript compilation validation
+- **Code linting**: ESLint with TypeScript rules
+- **Test coverage**: Jest with coverage reporting
+- **Security audit**: npm vulnerability scanning
+- **License compliance**: Automatic license checking
+
+### Automated Publishing
+- **Release Please**: Automated version management based on conventional commits
+- **npm publishing**: Automatic publishing to npm on releases
+- **GitHub releases**: Automatic release notes generation
+
+### Release Process
+
+1. **Feature Development**: Work on feature branches
+2. **Pull Request**: Open PR to main branch
+3. **CI Checks**: All tests and security checks must pass
+4. **Merge**: Merge to main triggers automated release
+5. **Version Bump**: Release Please creates version bump PR
+6. **Publish**: Merge version bump triggers npm publish
+
+### Conventional Commits
+
+For automated releases, use conventional commit format:
+
+```
+feat: add new search functionality
+fix: resolve paywall bypass issues
+docs: update installation instructions
+chore: update dependencies
+```
+
 ## Contributing
 
 1. Fork the repository
@@ -299,6 +367,7 @@ MIT License
 4. Add tests if applicable
 5. Run linting and type checking
 6. Submit a pull request
+7. Ensure CI checks pass before merging
 
 ## Testing
 

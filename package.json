@@ -12,17 +12,44 @@
     "dev": "ts-node src/cli.ts",
     "test": "jest",
     "lint": "eslint src --ext .ts",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build && npm test",
+    "version": "git add package.json",
+    "postversion": "git push && git push --tags"
   },
   "keywords": [
     "mcp",
     "medium",
     "scraper",
     "markdown",
-    "typescript"
+    "typescript",
+    "ai",
+    "claude",
+    "model-context-protocol",
+    "paywall-bypass"
   ],
   "author": "Hong Kong Kiwi",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hongkongkiwi/medium-scraper-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hongkongkiwi/medium-scraper-mcp/issues"
+  },
+  "homepage": "https://github.com/hongkongkiwi/medium-scraper-mcp#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.5.0",
     "axios": "^1.7.7",
@@ -38,11 +65,9 @@
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
     "jest": "^29.0.0",
+    "license-checker": "^25.0.1",
     "ts-jest": "^29.0.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.0.0"
-  },
-  "engines": {
-    "node": ">=18"
   }
 }
