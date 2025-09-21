@@ -21,6 +21,20 @@ const server = new Server(
 
 const mediumScraper = new MediumScraper();
 
+interface SearchParams {
+  query: string;
+  limit: number;
+  tag?: string;
+}
+
+interface ConvertParams {
+  url: string;
+  includeImages: boolean;
+  includeCode: boolean;
+  bypassPaywall: boolean;
+  preferredProxy: 'freedium' | 'readmedium' | 'archive' | 'auto';
+}
+
 // Tool schema for unified medium scraper
 const UnifiedMediumSchema = z.object({
   operation: z.enum(['search', 'convert', 'info'], {
@@ -121,8 +135,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         switch (params.operation) {
           case 'search': {
-            const searchParams: any = {
-              query: params.query!,
+            if (!params.query) {
+              throw new Error('Query parameter is required for search operation');
+            }
+            const searchParams: SearchParams = {
+              query: params.query,
               limit: params.limit
             };
             if (params.tag !== undefined) {
@@ -141,8 +158,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
 
           case 'convert': {
-            const convertParams: any = {
-              url: params.url!,
+            if (!params.url) {
+              throw new Error('URL parameter is required for convert operation');
+            }
+            const convertParams: ConvertParams = {
+              url: params.url,
               includeImages: params.includeImages,
               includeCode: params.includeCode,
               bypassPaywall: params.bypassPaywall,
@@ -161,7 +181,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
 
           case 'info': {
-            const info = await mediumScraper.getArticleInfo(params.url!);
+            if (!params.url) {
+              throw new Error('URL parameter is required for info operation');
+            }
+            const info = await mediumScraper.getArticleInfo(params.url);
 
             return {
               content: [
@@ -201,6 +224,17 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Medium Scraper MCP server started');
+
+  // Graceful shutdown handling
+  process.on('SIGTERM', async () => {
+    console.error('Received SIGTERM, shutting down gracefully...');
+    process.exit(0);
+  });
+
+  process.on('SIGINT', async () => {
+    console.error('Received SIGINT, shutting down gracefully...');
+    process.exit(0);
+  });
 }
 
 main().catch((error) => {

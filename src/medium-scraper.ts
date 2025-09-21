@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import TurndownService = require('turndown');
+import sanitizeHtml from 'sanitize-html';
 import { Article, ArticleInfo, SearchParams, ConvertParams } from './types';
 
 export class MediumScraper {
@@ -26,8 +27,11 @@ export class MediumScraper {
 
     this.turndownService.addRule('figure', {
       filter: 'figure',
-      replacement: (content: string, node: any) => {
-        const $ = cheerio.load(node.outerHTML);
+      replacement: (content: string, node: unknown) => {
+        const typedNode = node as { outerHTML?: string };
+        if (!typedNode.outerHTML) return content;
+
+        const $ = cheerio.load(typedNode.outerHTML);
         const img = $('img');
         const figcaption = $('figcaption');
 
@@ -236,7 +240,20 @@ export class MediumScraper {
         throw new Error('Could not find article content');
       }
 
-      const $ = cheerio.load(articleContent);
+      // Sanitize HTML content to prevent XSS
+      const sanitizedContent = sanitizeHtml(articleContent, {
+        allowedTags: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'strong', 'em', 'i', 'b', 'u', 'a', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'img', 'figure', 'figcaption'],
+        allowedAttributes: {
+          'a': ['href', 'title'],
+          'img': ['src', 'alt', 'title'],
+          'time': ['datetime'],
+          'meta': ['name', 'content', 'property']
+        },
+        allowedSchemes: ['http', 'https', 'mailto'],
+        allowProtocolRelative: true
+      });
+
+      const $ = cheerio.load(sanitizedContent);
 
       // Extract title (try multiple selectors for different layouts)
       const title = $('h1').first().text().trim() ||
