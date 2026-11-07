@@ -1,6 +1,6 @@
 [package]
 name = "medium-scraper-mcp"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
 rust-version = "1.80"
 description = "MCP server: Medium search, article-to-markdown with paywall-aware fetching, batch web crawling with browser fallback, and multi-engine web search"
@@ -15,7 +15,12 @@ name = "medium-scraper-mcp"
 path = "src/main.rs"
 
 [dependencies]
-rmcp = { version = "3.9", features = ["server", "macros", "transport-io"] }
+rmcp = { version = "3.9", features = [
+    "server",
+    "macros",
+    "transport-io",
+    "transport-streamable-http-server",
+] }
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
@@ -41,6 +46,14 @@ clap = { version = "4", features = ["derive"] }
 futures = "0.3"
 which = "7"
 chromiumoxide = "0.9"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+tokio-util = "0.7"
+
+[dev-dependencies]
+rmcp = { version = "3.9", features = [
+    "client",
+    "transport-streamable-http-client-reqwest",
+] }
 
 [profile.release]
 strip = true

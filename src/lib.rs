@@ -1,6 +1,7 @@
 pub mod config;
 pub mod extract;
 pub mod http;
+pub mod http_server;
 pub mod llm;
 pub mod md;
 pub mod medium;

@@ -22,8 +22,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Start the MCP stdio server (default when no subcommand is given)
-    Serve,
+    /// Start the MCP server (stdio by default; --transport http for streamable HTTP)
+    Serve {
+        /// stdio or http (streamable HTTP, MCP endpoint /mcp)
+        #[arg(long, default_value = "stdio")]
+        transport: String,
+        /// Bind address for --transport http
+        #[arg(long, default_value = "127.0.0.1", value_parser = clap::value_parser!(std::net::IpAddr))]
+        host: std::net::IpAddr,
+        /// Port for --transport http
+        #[arg(long, default_value_t = 8080)]
+        port: u16,
+        /// Require `Authorization: Bearer <token>` on HTTP. Falls back to MEDIUM_SCRAPER_HTTP_TOKEN env.
+        #[arg(long)]
+        token: Option<String>,
+        /// Additional Host header values to allow beyond loopback (repeatable)
+        #[arg(long = "allow-host")]
+        allow_host: Vec<String>,
+    },
     /// Fetch one URL and print the extracted content (JSON) - one-shot crawl4agent-style
     Fetch {
         url: String,
@@ -81,14 +97,42 @@ async fn main() -> Result<()> {
     let cfg = Config::from_env();
 
     match cli.command {
-        None | Some(Command::Serve) => {
-            let service = MediumScraperServer::new(cfg).context("build MCP server")?;
-            let running = service
-                .serve(rmcp::transport::stdio())
-                .await
-                .context("serve MCP stdio transport")?;
-            running.waiting().await?;
-            Ok(())
+        None => serve_stdio(cfg).await,
+        Some(Command::Serve {
+            transport,
+            host,
+            port,
+            token,
+            allow_host,
+        }) => {
+            let token = token.or_else(|| {
+                std::env::var("MEDIUM_SCRAPER_HTTP_TOKEN")
+                    .ok()
+                    .filter(|v| !v.is_empty())
+            });
+            match transport.as_str() {
+                "stdio" => serve_stdio(cfg).await,
+                "http" => {
+                    let router = medium_scraper_mcp::http_server::build_router(
+                        std::sync::Arc::new(cfg),
+                        token,
+                        allow_host,
+                    );
+                    let listener = tokio::net::TcpListener::bind((host, port))
+                        .await
+                        .context("bind HTTP listener")?;
+                    eprintln!("MCP streamable HTTP on http://{host}:{port}/mcp");
+                    axum::serve(listener, router)
+                        .with_graceful_shutdown(async {
+                            let _ = tokio::signal::ctrl_c().await;
+                        })
+                        .await?;
+                    Ok(())
+                }
+                other => Err(anyhow::anyhow!(
+                    "unknown transport '{other}' (expected stdio or http)"
+                )),
+            }
         }
         Some(Command::Fetch {
             url,
@@ -143,4 +187,14 @@ async fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+async fn serve_stdio(cfg: Config) -> Result<()> {
+    let service = MediumScraperServer::new(cfg).context("build MCP server")?;
+    let running = service
+        .serve(rmcp::transport::stdio())
+        .await
+        .context("serve MCP stdio transport")?;
+    running.waiting().await?;
+    Ok(())
 }

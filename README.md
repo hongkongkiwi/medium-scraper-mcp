@@ -20,6 +20,28 @@ Version 2.0.0 is a comprehensive Rust rewrite of the original TypeScript server,
 | `validate_setup` | Dependency and connectivity status: Medium/freedium reachability, cookies configured, Chrome present, yt-dlp present, LLM config. Optional live `test_url` read. |
 | `medium_scraper` | Legacy compatibility tool from v1: one tool with `operation=search|convert|info`. |
 
+## Transports
+
+| Transport | Command | Notes |
+| --- | --- | --- |
+| stdio | `medium-scraper-mcp serve` (default) | Standard MCP stdio; used by Claude Desktop/Code, Codex, Gemini CLI local configs. |
+| streamable HTTP | `medium-scraper-mcp serve --transport http --port 8080` | MCP endpoint at `/mcp`, health at `/healthz`. Serves SSE-formatted event streams (the current MCP standard transport). Stateless by default (rmcp 3.x). Optional bearer auth. |
+| legacy HTTP+SSE | not supported | Deprecated by the MCP spec (2025) and removed from rmcp 3.x. Streamable HTTP is the replacement; file an issue if you need a legacy-SSE bridge. |
+
+HTTP options: `--host` (default 127.0.0.1), `--port` (default 8080), `--token <t>` or `MEDIUM_SCRAPER_HTTP_TOKEN` env for bearer auth (strongly recommended when binding beyond loopback), `--allow-host example.com` to extend the loopback-only Host allowlist if you deploy behind a hostname. Protect the endpoint with TLS via a reverse proxy (Caddy/nginx); the server itself speaks plain HTTP.
+
+Example MCP client config (streamable HTTP):
+
+```json
+{
+  "mcpServers": {
+    "medium-scraper": {
+      "url": "http://127.0.0.1:8080/mcp"
+    }
+  }
+}
+```
+
 ## Installation
 
 ### Prebuilt binaries
@@ -66,6 +88,7 @@ command = "/path/to/medium-scraper-mcp"
 | `MEDIUM_SCRAPER_ACCEPT_LANGUAGE` | Accept-Language header. | `en-US,en;q=0.9` |
 | `MEDIUM_SCRAPER_YTDLP_COOKIES_FROM_BROWSER` | yt-dlp cookie source for video transcripts, e.g. `chrome`, `firefox:default`. | unset |
 | `MEDIUM_SCRAPER_YTDLP_COOKIEFILE` | Netscape cookies.txt path for yt-dlp. | unset |
+| `MEDIUM_SCRAPER_HTTP_TOKEN` | Bearer token required by serve --transport http when --token is not given. | unset |
 | `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` | OpenAI-compatible endpoint for optional `use_llm` cleanup in `fetch_urls`. Off unless all three are set. | unset |
 | `MEDIUM_SCRAPER_VERBOSE` | Set `1` for info-level stderr logging. | warnings only |
 
