@@ -1,427 +1,143 @@
-# Medium Scraper MCP Server
+# Medium Scraper MCP
 
-A comprehensive Model Context Protocol (MCP) server for searching Medium articles, converting them to markdown, and bypassing paywalls using proxy services.
+A Model Context Protocol (MCP) server, written in Rust, for reading and searching Medium, converting posts to clean Markdown with paywall-aware fetching, agent-friendly batch web crawling, and multi-engine web search.
 
-## Features
+Version 2.0.0 is a comprehensive Rust rewrite of the original TypeScript server, updated with the latest feature sets from two reference projects:
 
-### 🔍 **Article Search**
-- Search Medium articles by keywords and tags
-- Configurable result limits (1-50 articles)
-- Rich article metadata including titles, authors, and snippets
+- [mcp-medium-reader](https://github.com/ZhgChgLi/mcp-medium-reader) (ZhgChgLi): full-depth Markdown reading with frontmatter, post download to disk with images, paywall recovery guidance, custom-domain Medium URL detection.
+- [crawl4ai-mcp](https://github.com/pazyork/crawl4ai-mcp) (pazyork): `fetch_urls` batch extraction with browser escalation and blocked-page detection, `search_web` multi-engine fallback, anti-bot realism knobs, video transcript extraction, optional LLM cleanup.
 
-### 📝 **Markdown Conversion**
-- Convert Medium articles to clean, readable markdown
-- Preserve formatting, code blocks, and images
-- Customizable content inclusion (images, code blocks)
+## Tools
 
-### 🚫 **Paywall Bypass**
-- Automatic paywall detection
-- Multiple proxy services: freedium.cfd, readmedium.com, archive.today
-- Configurable proxy preferences with automatic fallback
-- Intelligent content validation
-
-### ⚡ **Unified Interface**
-- Single tool with multiple operations
-- Smart parameter validation
-- Comprehensive error handling
-- TypeScript implementation with full type safety
+| Tool | Description |
+| --- | --- |
+| `read_medium_post` | Read a Medium post by URL as clean Markdown with frontmatter (title, author, publication, published, tags, reading time). Handles `medium.com`, `*.medium.com`, and Medium publications on custom domains (`-a1b2c3d4e5f6` slug suffix detection). Member-only posts fall back to freedium/readmedium/archive; if bypass fails, the response includes a recovery notice. |
+| `download_medium_post` | Save a post to disk: `<output_dir>/Output/medium-scraper-mcp/<date>-<slug>.md` plus images under `assets/<post_id>/`. Re-runs are skip-if-unchanged. |
+| `get_article_info` | Article metadata as JSON: title, author, publication, published date, tags, reading time, word count, canonical URL, post id, paywall status. |
+| `search_medium` | Search Medium posts by query and optional tag. Layered: Medium search HTML, then tag pages, then a DuckDuckGo `site:medium.com` fallback. Returns `{title, url, author, snippet}`. |
+| `fetch_urls` | Fetch 1-20 URLs at once. Markdown or HTML output, main-content extraction, link extraction, blocked-page detection, automatic headless-Chrome fallback for blocked or JS-heavy pages, YouTube/Bilibili transcript extraction via yt-dlp, optional LLM cleanup. |
+| `search_web` | Web search across 7 engines: google, bing, duckduckgo, baidu, sogou, so360, yandex. `auto` plans by query language (English starts on DuckDuckGo, Chinese starts on Baidu). Deduplicated by URL and fuzzy title (85% threshold). |
+| `validate_setup` | Dependency and connectivity status: Medium/freedium reachability, cookies configured, Chrome present, yt-dlp present, LLM config. Optional live `test_url` read. |
+| `medium_scraper` | Legacy compatibility tool from v1: one tool with `operation=search|convert|info`. |
 
 ## Installation
 
-### Option 1: Install from npm (Recommended)
+### Prebuilt binaries
+
+Grab a binary from [Releases](https://github.com/hongkongkiwi/medium-scraper-mcp/releases), unzip, and point your MCP client at it.
+
+### From source
 
 ```bash
-# Install globally
-npm install -g medium-scraper-mcp
-
-# Or run directly with npx
-npx medium-scraper-mcp
-
-# For MCP configuration, use npx in your MCP client settings
+cargo install --git https://github.com/hongkongkiwi/medium-scraper-mcp
+# or clone and: cargo install --path .
 ```
 
-### Option 2: Install from source
+### MCP client configuration
+
+```json
+{
+  "mcpServers": {
+    "medium-scraper": {
+      "command": "/path/to/medium-scraper-mcp"
+    }
+  }
+}
+```
+
+Codex (`config.toml`):
+
+```toml
+[mcp_servers.medium-scraper]
+command = "/path/to/medium-scraper-mcp"
+```
+
+## Configuration (environment variables)
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `MEDIUM_SCRAPER_PROXY` | Upstream proxy: `http://`, `https://`, `socks5://`, `host:port`, or port-only (normalized). `CRAWL4AI_MCP_PROXY` is accepted as an alias. | unset |
+| `MEDIUM_SCRAPER_COOKIES` | Raw Cookie header for medium.com requests. Setting your signed-in `sid`/`uid` (plus `cf_clearance`) unlocks member-only posts directly. | unset |
+| `MEDIUM_SCRAPER_TIMEOUT_MS` | Per-request HTTP timeout. | `30000` |
+| `MEDIUM_SCRAPER_HEADLESS` | Launch the browser fallback headless. | `true` |
+| `MEDIUM_SCRAPER_NO_BROWSER` | Set `1` to disable the Chrome fallback entirely. | unset |
+| `MEDIUM_SCRAPER_MAX_CONTENT_CHARS` | Default truncation cap for `fetch_urls`. | `200000` |
+| `MEDIUM_SCRAPER_USER_AGENT` | Pin a user agent; otherwise requests rotate a pool of modern UAs. | rotation |
+| `MEDIUM_SCRAPER_ACCEPT_LANGUAGE` | Accept-Language header. | `en-US,en;q=0.9` |
+| `MEDIUM_SCRAPER_YTDLP_COOKIES_FROM_BROWSER` | yt-dlp cookie source for video transcripts, e.g. `chrome`, `firefox:default`. | unset |
+| `MEDIUM_SCRAPER_YTDLP_COOKIEFILE` | Netscape cookies.txt path for yt-dlp. | unset |
+| `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` | OpenAI-compatible endpoint for optional `use_llm` cleanup in `fetch_urls`. Off unless all three are set. | unset |
+| `MEDIUM_SCRAPER_VERBOSE` | Set `1` for info-level stderr logging. | warnings only |
+
+## How Medium fetching works
+
+1. Direct fetch with browser-realistic headers and optional cookies, parse metadata (JSON-LD, OpenGraph) and the article body, render to Markdown.
+2. If the post is member-only (paywall detected) and bypass is enabled: try `freedium.cfd`, then `readmedium.com`, then `archive.ph`, validating each returned body.
+3. If every path returns only a preview, the tool returns the preview plus a recovery notice (cookie setup instructions), instead of silently returning truncated text.
+
+The v1 paywall-bypass proxy chain is preserved and the mcp-medium-reader frontmatter shape and paywall-notice pattern are ported. The Ruby-gem cookie cache of mcp-medium-reader is replaced by the `MEDIUM_SCRAPER_COOKIES` variable: the MCP server stays a single static binary with no runtime dependencies.
+
+## One-shot CLI
+
+The same binary doubles as a stateless CLI (a port of crawl4ai-mcp's `crawl4agent`):
 
 ```bash
-# Clone repository
-git clone https://github.com/hongkongkiwi/medium-scraper-mcp.git
-cd medium-scraper-mcp
-
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
-
-# Run the server
-npm start
+medium-scraper-mcp fetch "https://example.com/article" --format markdown
+medium-scraper-mcp search "rust async" --tag rust --limit 5
+medium-scraper-mcp search-web "agent framework" --engine auto --max-results 5
+medium-scraper-mcp doctor
+medium-scraper-mcp serve   # MCP stdio server (default when no subcommand is given)
 ```
 
 ## Development
 
 ```bash
-# Install dependencies
-npm install
-
-# Run in development mode
-npm run dev
-
-# Run tests
-npm test
-
-# Lint code
-npm run lint
-
-# Type check
-npm run type-check
+cargo test
+cargo clippy --all-targets
+cargo build --release
 ```
 
-## MCP Server Tools
-
-The server provides a single unified tool for all Medium operations:
-
-### `medium_scraper`
-
-A unified tool for searching, converting, and getting Medium article information with paywall bypass capabilities.
-
-**Parameters:**
-- `operation` (required): Operation to perform
-  - `"search"`: Find articles by query/tag
-  - `"convert"`: Convert article to markdown
-  - `"info"`: Get article metadata
-- `query` (optional): Search query string (required for search)
-- `url` (optional): Medium article URL (required for convert/info)
-- `tag` (optional): Medium tag to filter by (e.g., "python", "technology") - only for search
-- `limit` (optional): Maximum number of results (default: 10, max: 50) - only for search
-- `includeImages` (optional): Include image references in markdown (default: true) - only for convert
-- `includeCode` (optional): Preserve code blocks (default: true) - only for convert
-- `bypassPaywall` (optional): Attempt paywall bypass (default: false) - only for convert
-- `preferredProxy` (optional): Preferred proxy service (default: "auto") - only for convert
-  - `"freedium"`: Use freedium.cfd
-  - `"readmedium"`: Use readmedium.com
-  - `"archive"`: Use archive.today
-  - `"auto"`: Try all proxies automatically
-
-**Examples:**
-
-#### Search for articles
-```json
-{
-  "name": "medium_scraper",
-  "arguments": {
-    "operation": "search",
-    "query": "machine learning",
-    "tag": "python",
-    "limit": 5
-  }
-}
-```
-
-#### Convert article to markdown with paywall bypass
-```json
-{
-  "name": "medium_scraper",
-  "arguments": {
-    "operation": "convert",
-    "url": "https://medium.com/@author/article-title-1234567890",
-    "includeImages": true,
-    "includeCode": true,
-    "bypassPaywall": true,
-    "preferredProxy": "auto"
-  }
-}
-```
-
-#### Get article information
-```json
-{
-  "name": "medium_scraper",
-  "arguments": {
-    "operation": "info",
-    "url": "https://medium.com/@author/article-title-1234567890"
-  }
-}
-```
-
-## Running the Server
-
-### CLI Mode
-
-```bash
-# Build and run
-npm run build
-npm start
-
-# Development mode
-npm run dev
-
-# Verbose logging
-npm run dev -- --verbose
-```
-
-### MCP Configuration
-
-Add to your MCP client configuration:
-
-**For npm installation:**
-```json
-{
-  "mcpServers": {
-    "medium-scraper": {
-      "command": "npx",
-      "args": ["medium-scraper-mcp"]
-    }
-  }
-}
-```
-
-**For global installation:**
-```json
-{
-  "mcpServers": {
-    "medium-scraper": {
-      "command": "medium-scraper-mcp"
-    }
-  }
-}
-```
-
-## Example Usage
-
-### Search for Python articles
-```json
-{
-  "name": "medium_scraper",
-  "arguments": {
-    "operation": "search",
-    "query": "asyncio",
-    "tag": "python",
-    "limit": 3
-  }
-}
-```
-
-### Convert an article to markdown with paywall bypass
-```json
-{
-  "name": "medium_scraper",
-  "arguments": {
-    "operation": "convert",
-    "url": "https://medium.com/@author/understanding-asyncio-in-python-1234567890",
-    "bypassPaywall": true,
-    "preferredProxy": "auto"
-  }
-}
-```
-
-### Get article information
-```json
-{
-  "name": "medium_scraper",
-  "arguments": {
-    "operation": "info",
-    "url": "https://medium.com/@author/understanding-asyncio-in-python-1234567890"
-  }
-}
-```
-
-## Dependencies
-
-### Runtime Dependencies
-- `@modelcontextprotocol/sdk`: MCP framework
-- `axios`: HTTP client
-- `cheerio`: HTML parsing
-- `turndown`: HTML to Markdown conversion
-- `zod`: Schema validation
-
-### Development Dependencies
-- `typescript`: TypeScript compiler
-- `ts-node`: TypeScript execution
-- `jest`: Testing framework
-- `eslint`: Code linting
-- `@types/*`: TypeScript definitions
-
-## Project Structure
+Project layout:
 
 ```
 src/
-├── cli.ts              # Command line interface
-├── server.ts           # MCP server implementation
-├── medium-scraper.ts   # Medium scraping logic
-├── types.ts           # TypeScript type definitions
-└── index.ts           # Main exports
-
-dist/                   # Compiled JavaScript files (generated)
-├── cli.js
-├── server.js
-├── medium-scraper.js
-├── types.js
-└── index.js
+├── main.rs            # CLI: serve (default), fetch, search, search-web, doctor
+├── server.rs          # rmcp server: 8 MCP tools
+├── config.rs          # env config, proxy normalization
+├── http.rs            # fetcher: UA rotation, proxy, cookies, retries
+├── md.rs              # HTML -> Markdown renderer
+├── extract.rs         # metadata, JSON-LD, main-content selection, blocked detection
+├── medium/
+│   ├── parse.rs       # Medium URL detection, article parsing, frontmatter
+│   ├── fetch.rs       # direct + freedium/readmedium/archive chain
+│   ├── search.rs      # Medium search + tag pages + DDG fallback
+│   └── download.rs    # disk archive with images, skip-if-unchanged
+├── crawl.rs           # fetch_urls engine: concurrency, escalation, cleanup
+├── browser.rs         # chromiumoxide (CDP) fallback via system Chrome
+├── search_web.rs      # 7-engine search with auto-fallback
+├── video.rs           # yt-dlp transcript extraction (vtt/srt/json3/ttml)
+└── llm.rs             # OpenAI-compatible cleanup prompts
 ```
 
-## API Reference
+## CI/CD
 
-### MediumScraper Class
+- `ci.yml`: build, test, clippy on every push/PR (macOS + Ubuntu).
+- `release.yml`: on a `v*` tag, builds release binaries (macOS arm64/x86_64, Linux x86_64), generates SHA256SUMS, and publishes a GitHub release.
 
-#### `searchArticles(params: SearchParams): Promise<Article[]>`
+Release process:
 
-Search for Medium articles.
-
-```typescript
-const articles = await mediumScraper.searchArticles({
-  query: 'typescript',
-  tag: 'programming',
-  limit: 10
-});
+```bash
+git tag v2.0.x && git push origin v2.0.x
 ```
 
-#### `convertToMarkdown(params: ConvertParams): Promise<string>`
+## Acknowledgements
 
-Convert a Medium article to markdown with optional paywall bypass.
-
-```typescript
-const markdown = await mediumScraper.convertToMarkdown({
-  url: 'https://medium.com/@author/article-url',
-  includeImages: true,
-  includeCode: true,
-  bypassPaywall: true,
-  preferredProxy: 'auto'
-});
-```
-
-#### `getArticleInfo(url: string): Promise<ArticleInfo>`
-
-Get article metadata.
-
-```typescript
-const info = await mediumScraper.getArticleInfo('https://medium.com/@author/article-url');
-```
-
-### Paywall Bypass
-
-The server includes intelligent paywall bypass functionality:
-
-**Automatic Detection:**
-- Detects paywall indicators in HTML content
-- Identifies premium content barriers
-- Recognizes subscription prompts
-
-**Proxy Services:**
-- **freedium.cfd**: Direct proxy service
-- **readmedium.com**: Article-specific proxy
-- **archive.today**: Archive-based proxy
-- **Auto mode**: Intelligent fallback between services
-
-**Smart Fallback:**
-- Tries direct access first
-- Falls back to proxy services when paywall detected
-- Automatic service switching on failures
-- Content validation to ensure quality
+Feature design adapted from [ZhgChgLi/mcp-medium-reader](https://github.com/ZhgChgLi/mcp-medium-reader) (MIT) and [pazyork/crawl4ai-mcp](https://github.com/pazyork/crawl4ai-mcp) (AGPL-3.0). This Rust implementation was written independently; see each project for its own terms. The original v1 TypeScript server by Hong Kong Kiwi is preserved in git history.
 
 ## License
 
-MIT License
+MIT. See [LICENSE](./LICENSE).
 
-## CI/CD Pipeline
+## Disclaimer
 
-This project uses GitHub Actions for automated testing, security scanning, and npm publishing:
-
-### Automated Testing
-- **Multi-node testing**: Runs on Node.js 18, 20, and 22
-- **Type checking**: TypeScript compilation validation
-- **Code linting**: ESLint with TypeScript rules
-- **Test coverage**: Jest with coverage reporting
-- **Security audit**: npm vulnerability scanning
-- **License compliance**: Automatic license checking
-
-### Automated Publishing
-- **Release Please**: Automated version management based on conventional commits
-- **npm publishing**: Automatic publishing to npm on releases
-- **GitHub releases**: Automatic release notes generation
-
-### Release Process
-
-1. **Feature Development**: Work on feature branches
-2. **Pull Request**: Open PR to main branch
-3. **CI Checks**: All tests and security checks must pass
-4. **Merge**: Merge to main triggers automated release
-5. **Version Bump**: Release Please creates version bump PR
-6. **Publish**: Merge version bump triggers npm publish
-
-### Conventional Commits
-
-For automated releases, use conventional commit format:
-
-```
-feat: add new search functionality
-fix: resolve paywall bypass issues
-docs: update installation instructions
-chore: update dependencies
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Run linting and type checking
-6. Submit a pull request
-7. Ensure CI checks pass before merging
-
-## Testing
-
-The project includes Jest tests for all functionality:
-
-```bash
-# Run all tests
-npm test
-
-# Run with coverage
-npm test -- --coverage
-
-# Run tests in watch mode
-npm test -- --watch
-```
-
-## Error Handling
-
-The server includes comprehensive error handling:
-
-- **Invalid URLs**: Returns user-friendly error messages
-- **Network errors**: Graceful handling of connection issues
-- **Content parsing**: Handles malformed HTML gracefully
-- **Rate limiting**: Respects Medium's rate limits
-- **Validation**: Uses Zod schemas for input validation
-- **Proxy failures**: Automatic fallback between proxy services
-- **Paywall detection**: Graceful degradation when bypass fails
-- **Content extraction**: Handles missing or incomplete content
-
-### Error Types
-
-**Network Errors:**
-- Connection timeouts (15 seconds for proxy services)
-- DNS resolution failures
-- HTTP status errors (4xx, 5xx)
-
-**Content Errors:**
-- Missing article content
-- Malformed HTML structure
-- Empty or incomplete responses
-
-**Validation Errors:**
-- Invalid URLs (format validation)
-- Missing required parameters
-- Out-of-range values (e.g., limit > 50)
-
-**Paywall Bypass Errors:**
-- All proxy services unavailable
-- Content quality validation failures
-- Proxy service timeouts
-
-## Performance Considerations
-
-- **Async/Await**: Non-blocking operations for better performance
-- **Connection reuse**: Reuses HTTP connections where possible
-- **Memory efficient**: Streams responses and processes content incrementally
-- **Rate limiting**: Built-in delays to avoid overwhelming Medium's servers
+All content fetched or downloaded through this server belongs to its respective owners and is subject to copyright. This tool does not claim ownership of any fetched content and does not condone copyright infringement. Users are solely responsible for ensuring they have the necessary permissions and rights for any content they fetch or download, and for complying with Medium's [Terms of Service](https://policy.medium.com/medium-terms-of-service-9db0094a1e0f).
